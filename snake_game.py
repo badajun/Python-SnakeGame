@@ -1,16 +1,11 @@
-import pygame
 import random
-
-pygame.init()
-
+import pygame
 
 WIDTH, HEIGHT = 600, 400
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("🐍 Snake Game")
-
-
+SNAKE_BLOCK = 20
+# 每秒移动的格数：数字越大，速度越快。
+DIFFICULTIES = {"Easy": 5, "Normal": 8, "Hard": 12}
 WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
 RED = (213, 50, 80)
 GREEN = (0, 255, 0)
 DARK_GREEN = (0, 155, 0)
@@ -18,125 +13,124 @@ BLUE = (50, 153, 213)
 YELLOW = (255, 255, 102)
 
 
-SNAKE_BLOCK = 20            
-SNAKE_SPEED = 8             
-
-font = pygame.font.SysFont("comicsansms", 25)
-score_font = pygame.font.SysFont("comicsansms", 35)
-clock = pygame.time.Clock()
-
-def score_display(score):
-    value = score_font.render("Score: " + str(score), True, YELLOW)
-    screen.blit(value, [10, 10])
-
-def draw_snake(snake_list):
-    
-    for i, (x, y) in enumerate(snake_list):
-        color = DARK_GREEN if i == 0 else GREEN
-        pygame.draw.rect(screen, color, [x, y, SNAKE_BLOCK, SNAKE_BLOCK])
-
-def draw_food(food_x, food_y):
-
-    cx = food_x + SNAKE_BLOCK // 2
-    cy = food_y + SNAKE_BLOCK // 2
-    pygame.draw.circle(screen, RED, (cx, cy), SNAKE_BLOCK // 2)
-
-def message(msg, color, y_shift=0):
-    mesg = font.render(msg, True, color)
-    screen.blit(mesg, [WIDTH / 6, HEIGHT / 3 + y_shift])
-
-def new_food(snake_list):
-   
-    while True:
-        fx = random.randrange(0, WIDTH, SNAKE_BLOCK)
-        fy = random.randrange(0, HEIGHT, SNAKE_BLOCK)
-        if (fx, fy) not in snake_list:
-            return fx, fy
-
-def snap_to_grid(v):
-    
-    return (v // SNAKE_BLOCK) * SNAKE_BLOCK
-
-def game_loop():
-    game_over = False
-    game_close = False
+def new_food(snake):
+    """只在空格子里生成食物；填满棋盘时返回 None。"""
+    empty = [(x, y) for x in range(0, WIDTH, SNAKE_BLOCK)
+             for y in range(0, HEIGHT, SNAKE_BLOCK) if (x, y) not in snake]
+    return random.choice(empty) if empty else None
 
 
-    x = snap_to_grid(WIDTH // 2)
-    y = snap_to_grid(HEIGHT // 2)
-    x_change = 0
-    y_change = 0
+def move_snake(snake, direction, food):
+    """计算一次移动，返回蛇、食物、是否吃到食物、是否碰撞。"""
+    x, y = snake[-1]
+    dx, dy = direction
+    head = (x + dx, y + dy)
+    eating = head == food
+    # 没有吃食物时，尾巴同时移走，因此可以走到原来尾巴的位置。
+    body = snake if eating else snake[1:]
+    if not (0 <= head[0] < WIDTH and 0 <= head[1] < HEIGHT) or head in body:
+        return snake, food, False, True
+    snake = body + [head]
+    if eating:
+        food = new_food(snake)
+    return snake, food, eating, False
 
-    snake_list = []
-    length_of_snake = 1
 
-    food_x, food_y = new_food(snake_list)
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Snake Game")
+    font = pygame.font.Font(None, 32)
+    title_font = pygame.font.Font(None, 48)
+    clock = pygame.time.Clock()
 
-    while not game_over:
+    def text(message, y, color=WHITE, large=False):
+        image = (title_font if large else font).render(message, True, color)
+        screen.blit(image, image.get_rect(center=(WIDTH // 2, y)))
 
-        while game_close:
-            screen.fill(BLUE)
-            message("💀 You Lost!", RED)
-            message("Press C to Play Again or Q to Quit", YELLOW, 40)
-            score_display(length_of_snake - 1)
-            pygame.display.update()
+    state = "menu"
+    difficulty = "Normal"
+    snake = [(300, 200)]
+    direction = (SNAKE_BLOCK, 0)
+    food = new_food(snake)
+    score = 0
+    elapsed = 0
+    turned = False
+    running = True
+    keys = {pygame.K_LEFT: (-SNAKE_BLOCK, 0),
+            pygame.K_RIGHT: (SNAKE_BLOCK, 0),
+            pygame.K_UP: (0, -SNAKE_BLOCK),
+            pygame.K_DOWN: (0, SNAKE_BLOCK)}
 
-            for event in pygame.event.get():
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_q:
-                        game_over = True
-                        game_close = False
-                    if event.key == pygame.K_c:
-                        game_loop()
-
+    while running:
+        dt = clock.tick(60)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                game_over = True
+                running = False
             elif event.type == pygame.KEYDOWN:
-               
-                if event.key == pygame.K_LEFT and x_change == 0:
-                    x_change, y_change = -SNAKE_BLOCK, 0
-                elif event.key == pygame.K_RIGHT and x_change == 0:
-                    x_change, y_change = SNAKE_BLOCK, 0
-                elif event.key == pygame.K_UP and y_change == 0:
-                    x_change, y_change = 0, -SNAKE_BLOCK
-                elif event.key == pygame.K_DOWN and y_change == 0:
-                    x_change, y_change = 0, SNAKE_BLOCK
+                if event.key == pygame.K_q:
+                    running = False
+                elif event.key == pygame.K_ESCAPE:
+                    state = "menu"
+                elif state == "menu":
+                    choices = {pygame.K_1: "Easy", pygame.K_2: "Normal", pygame.K_3: "Hard"}
+                    if event.key in choices:
+                        difficulty = choices[event.key]
+                    elif event.key == pygame.K_RETURN:
+                        snake = [(300, 200)]
+                        direction = (SNAKE_BLOCK, 0)
+                        food = new_food(snake)
+                        score = 0
+                        elapsed = 0
+                        turned = False
+                        state = "playing"
+                elif state in ("playing", "paused") and event.key == pygame.K_SPACE:
+                    state = "paused" if state == "playing" else "playing"
+                    elapsed = 0
+                elif state == "playing" and event.key in keys and not turned:
+                    proposed = keys[event.key]
+                    if proposed != (-direction[0], -direction[1]):
+                        direction = proposed
+                        turned = True
+                elif state == "over" and event.key == pygame.K_c:
+                    state = "menu"
 
-    
-        if x >= WIDTH or x < 0 or y >= HEIGHT or y < 0:
-            game_close = True
-
-        
-        x += x_change
-        y += y_change
+        if state == "playing" and running:
+            elapsed += dt
+            if elapsed >= 1000 / DIFFICULTIES[difficulty]:
+                elapsed = 0
+                snake, food, ate, collided = move_snake(snake, direction, food)
+                turned = False
+                if ate:
+                    score += 1
+                if collided or food is None:
+                    state = "over"
 
         screen.fill(BLUE)
-        draw_food(food_x, food_y)
-
-      
-        snake_head = (x, y)
-        snake_list.append(snake_head)
-        if len(snake_list) > length_of_snake:
-            del snake_list[0]
-
-  
-        if snake_head in snake_list[:-1]:
-            game_close = True
-
-        draw_snake(snake_list)
-        score_display(length_of_snake - 1)
-        pygame.display.update()
-
-       
-        if x == food_x and y == food_y:
-            length_of_snake += 1
-            food_x, food_y = new_food(snake_list)
-
-        clock.tick(SNAKE_SPEED)
+        if state == "menu":
+            text("Snake Game", 65, YELLOW, large=True)
+            text("1: Easy    2: Normal    3: Hard", 140)
+            text("Selected: " + difficulty, 185, YELLOW)
+            text("Enter: Start", 240)
+            text("Arrows: Move    Space: Pause", 290)
+            text("Esc: Menu    Q: Quit", 335)
+        else:
+            if food is not None:
+                pygame.draw.circle(screen, RED, (food[0] + 10, food[1] + 10), 10)
+            for i, (x, y) in enumerate(snake):
+                pygame.draw.rect(screen, DARK_GREEN if i == len(snake) - 1 else GREEN,
+                                 (x, y, SNAKE_BLOCK, SNAKE_BLOCK))
+            image = font.render(f"Score: {score}   {difficulty}", True, YELLOW)
+            screen.blit(image, (10, 10))
+            if state == "paused":
+                text("Paused - Space to continue", 190, YELLOW)
+            elif state == "over":
+                text("You Win!" if food is None else "Game Over", 175, YELLOW, large=True)
+                text("C: Menu / Play again    Q: Quit", 225)
+        pygame.display.flip()
 
     pygame.quit()
-    raise SystemExit
+
 
 if __name__ == "__main__":
-    game_loop()
+    main()
